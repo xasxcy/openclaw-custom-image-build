@@ -1,0 +1,135 @@
+# ── Dockerfile.tools ─────────────────────────────────────────────────────────
+# 预打包工具层镜像，与 OpenClaw 官方镜像解耦。
+# 包含：系统依赖、Go、uv、gh、Homebrew、（Docker CLI）
+# 这些组件变动频率极低，build 一次可长期复用。
+#
+# 构建命令：
+#   docker build -f Dockerfile.tools -t openclaw-tools:latest .
+#   docker build -f Dockerfile.tools -t openclaw-tools:$(date +%Y%m%d) .
+# ─────────────────────────────────────────────────────────────────────────────
+FROM debian:bookworm-slim
+
+# 确保有 node 用户（uid 1000），与官方 openclaw 镜像保持一致
+RUN groupadd --gid 1000 node && \
+    useradd --uid 1000 --gid node --shell /bin/bash --create-home node
+
+# ── 系统依赖 ──────────────────────────────────────────────────────────────────
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      apt-utils \
+      socat \
+      ffmpeg \
+      build-essential \
+      git \
+      curl \
+      jq \
+      python3 \
+      file \
+      procps \
+      ca-certificates \
+      libgbm1 \
+      libnss3 \
+      libatk1.0-0 \
+      libatk-bridge2.0-0 \
+      libcups2 \
+      libdrm2 \
+      libxkbcommon0 \
+      libxcomposite1 \
+      libxdamage1 \
+      libxfixes3 \
+      libxrandr2 \
+      libpango-1.0-0 \
+      libcairo2 \
+      libasound2 \
+      libx11-6 \
+      libx11-xcb1 \
+      libxcb1 \
+      libxext6 \
+      fonts-liberation \
+      libappindicator3-1 \
+      xdg-utils \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# ── Go ────────────────────────────────────────────────────────────────────────
+# 1.24+ 避免 blogwatcher 等 skill 触发 toolchain 自动下载导致标准库路径错乱
+RUN curl -fsSL https://go.dev/dl/go1.24.4.linux-amd64.tar.gz | tar -C /usr/local -xz && \
+    ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
+    ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+RUN mkdir -p /home/node/go && chown -R node:node /home/node/go
+
+# ── uv ────────────────────────────────────────────────────────────────────────
+RUN curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh
+
+# ── gh (GitHub CLI) ───────────────────────────────────────────────────────────
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+      | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg 2>/dev/null && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+      > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y --no-install-recommends gh && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
+# ── Homebrew ──────────────────────────────────────────────────────────────────
+# 路径必须是 /home/linuxbrew/.linuxbrew（OpenClaw brew.ts 写死查找此路径）
+# brew 不允许 root 运行，以 node 用户安装
+RUN mkdir -p /home/linuxbrew && chown -R node:node /home/linuxbrew
+USER node
+RUN NONINTERACTIVE=1 /bin/bash -c \
+    "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+USER root
+RUN ln -sf /home/linuxbrew/.linuxbrew/bin/brew /usr/local/bin/brew
+RUN mkdir -p /home/node/.cache/Homebrew && chown -R node:node /home/node/.cache
+
+# 因为 Chromium 的安装依赖 /app/node_modules/playwright-core/cli.js，这个路径是 OpenClaw 官方镜像里才有的，Dockerfile.tools 基于的是 debian:bookworm-slim，根本没有这个文件。
+# 所以 Chromium 只能在已经有 OpenClaw 代码的镜像上安装，没办法提前放到工具层里。
+
+# ── Docker CLI（可选，烘焙在 tools 里）────────────────────────────────────────
+#
+# 只能启用「tools 里安装」或「最终镜像里安装」其中一种。
+#
+# 选择在 tools 里烘焙的好处：
+#   - 最终镜像 Dockerfile build 更快（只 COPY，不用再跑 Docker apt 源与安装）
+#   - 你的“常用工具集合”更完整，多个最终镜像复用同一套 docker CLI
+#
+# 选择在 tools 里烘焙的坏处：
+#   - tools 镜像需要更频繁更新（Docker CLI 版本更新会推动 tools 重建）
+#   - 如果未来官方 openclaw 基础发行版/版本变化，你需要同步调整 tools base（否则二进制/依赖可能不匹配）
+#
+# 启用方式（二选一）：
+#   A. 在 tools 里安装（这里）：构建 tools 时加 --build-arg 取消注释对应 RUN 块
+#   B. 在最终镜像安装（Dockerfile 里）：构建最终镜像时加 --build-arg 取消注释对应 RUN 块
+#
+# 提醒：这只安装 docker 客户端与 compose 插件，不会在容器里启动 dockerd。
+# 只能启用两处中的一个：要么在 Dockerfile.tools 里安装，要么在最终 Dockerfile 里安装。
+#
+# 在这里启用的好处：
+#   - 最终镜像构建更快，最终 Dockerfile 只需要 COPY 工具层文件
+#   - 多个最终镜像可以复用同一份 tools 缓存
+# 在这里启用的坏处：
+#   - tools 镜像需要更频繁更新（Docker CLI 更新会推动 tools 重建）
+#   - 需要保证 tools 的发行版与最终镜像兼容，否则可能出现依赖不匹配
+#
+# 启用方式：
+#   1) 取消下面 RUN 块的注释
+#   2) 在最终 Dockerfile 里启用“方式 A”的 COPY，并保持“方式 B”的安装块为注释状态
+ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
+
+# RUN apt-get update \
+#  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+#  && install -m 0755 -d /etc/apt/keyrings \
+#  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg.asc \
+#  && expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" \
+#  && actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" \
+#  && if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
+#       echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-})" >&2; \
+#       exit 1; \
+#     fi \
+#  && gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.asc \
+#  && rm -f /tmp/docker.gpg.asc \
+#  && chmod a+r /etc/apt/keyrings/docker.gpg \
+#  && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable\n' \
+#       "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list \
+#  && apt-get update \
+#  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+#  && apt-get clean \
+#  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*

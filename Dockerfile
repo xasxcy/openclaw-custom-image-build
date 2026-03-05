@@ -29,54 +29,11 @@ COPY --from=tools /usr/local/bin/uv /usr/local/bin/uv
 # gh
 COPY --from=tools /usr/bin/gh /usr/bin/gh
 
-# ── Docker CLI（两种烘焙位置，二选一）─────────────────────────────────────────
-#
-# 只能启用下面两种方式中的一种，否则你会：
-#   - 两边都装：镜像变大，构建变慢，还会混淆“到底用的是哪套 docker”
-#   - 两边都不装：容器里没有 docker 命令
-#
-# 方式 A：在 tools 镜像里烘焙 Docker CLI，然后在这里 COPY 进来
-# 好处：
-#   - 最终镜像构建更快（不需要跑 Docker apt 源与安装）
-#   - docker CLI 变成你工具层的一部分，多个最终镜像复用
-# 坏处：
-#   - tools 镜像需要更频繁更新（跟随 docker CLI 版本）
-#   - tools 与官方 openclaw 基础发行版需要保持兼容，否则可能出现依赖不匹配
-#
-# 启用 A 的做法：
-#   1) 构建 tools 时加：--build-arg 取消注释对应 RUN 块
-#   2) 取消下面三行 COPY 的注释
-#   3) 保持方式 B 不启用（保持方式 B 的安装块为注释状态）
-#
-# COPY --from=tools /usr/bin/docker /usr/bin/docker
-# COPY --from=tools /usr/libexec/docker /usr/libexec/docker
-# COPY --from=tools /usr/lib/docker /usr/lib/docker
-#
-# 方式 B：在最终镜像里安装 Docker CLI（不依赖 tools）
-# 好处：
-#   - tools 镜像更稳定，更新频率更低
-#   - 更贴近官方 Dockerfile 的做法，排障更简单
-# 坏处：
-#   - 最终镜像 build 会更慢（每次都要跑 Docker apt 源与安装）
-#
-# 启用 B 的做法：
-#   1) 构建最终镜像时加：--build-arg 取消注释对应 RUN 块
-#   2) 保持方式 A 的 COPY 注释状态
-#
-# 方式 B：在最终镜像里安装 Docker CLI（不依赖 tools）
-# 好处：
-#   - tools 镜像更稳定，更新频率更低
-#   - 更贴近官方 Dockerfile 的做法，排障更简单
-# 坏处：
-#   - 最终镜像 build 会更慢（每次都要跑 Docker apt 源与安装）
-#
-# 只能启用两处中的一个：要么在 Dockerfile.tools 里安装，要么在这里安装。
-#
-# 启用方式：
-#   1) 取消下面 RUN 块的注释
-#   2) 保持方式 A 的 COPY 为注释状态
-#   3) 保持 Dockerfile.tools 里的 Docker 安装块为注释状态
-ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
+# ── Docker CLI ────────────────────────────────────────────────────────────────
+# Installed here rather than in the tools layer, so the tools layer stays stable.
+# DOCKER_CLI_VERSION: pin to a specific release (e.g. 27.3.1); leave unset for latest.
+ARG DOCKER_CLI_VERSION=””
+ARG OPENCLAW_DOCKER_GPG_FINGERPRINT=”9DC858229FC7DD38854AE2D88D81803C0EBFCD88”
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl gnupg \
@@ -94,7 +51,12 @@ RUN apt-get update \
  && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable\n' \
       "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list \
  && apt-get update \
- && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
+ && if [ -n "$DOCKER_CLI_VERSION" ]; then \
+      CLI_VER=$(apt-cache madison docker-ce-cli | awk -v v="$DOCKER_CLI_VERSION" '$0 ~ v {print $3; exit}'); \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "docker-ce-cli=${CLI_VER}" docker-compose-plugin; \
+    else \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin; \
+    fi \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 

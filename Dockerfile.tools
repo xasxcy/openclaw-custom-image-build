@@ -1,6 +1,6 @@
 # ── Dockerfile.tools ─────────────────────────────────────────────────────────
 # 预打包工具层镜像，与 OpenClaw 官方镜像解耦。
-# 包含：系统依赖、Go、uv、gh、Homebrew、（Docker CLI）
+# 包含：系统依赖、Go、uv、gh、Homebrew
 # 这些组件变动频率极低，build 一次可长期复用。
 #
 # 构建命令：
@@ -82,54 +82,3 @@ RUN mkdir -p /home/node/.cache/Homebrew && chown -R node:node /home/node/.cache
 
 # 因为 Chromium 的安装依赖 /app/node_modules/playwright-core/cli.js，这个路径是 OpenClaw 官方镜像里才有的，Dockerfile.tools 基于的是 debian:bookworm-slim，根本没有这个文件。
 # 所以 Chromium 只能在已经有 OpenClaw 代码的镜像上安装，没办法提前放到工具层里。
-
-# ── Docker CLI（可选，烘焙在 tools 里）────────────────────────────────────────
-#
-# 只能启用「tools 里安装」或「最终镜像里安装」其中一种。
-#
-# 选择在 tools 里烘焙的好处：
-#   - 最终镜像 Dockerfile build 更快（只 COPY，不用再跑 Docker apt 源与安装）
-#   - 你的“常用工具集合”更完整，多个最终镜像复用同一套 docker CLI
-#
-# 选择在 tools 里烘焙的坏处：
-#   - tools 镜像需要更频繁更新（Docker CLI 版本更新会推动 tools 重建）
-#   - 如果未来官方 openclaw 基础发行版/版本变化，你需要同步调整 tools base（否则二进制/依赖可能不匹配）
-#
-# 启用方式（二选一）：
-#   A. 在 tools 里安装（这里）：构建 tools 时加 --build-arg 取消注释对应 RUN 块
-#   B. 在最终镜像安装（Dockerfile 里）：构建最终镜像时加 --build-arg 取消注释对应 RUN 块
-#
-# 提醒：这只安装 docker 客户端与 compose 插件，不会在容器里启动 dockerd。
-# 只能启用两处中的一个：要么在 Dockerfile.tools 里安装，要么在最终 Dockerfile 里安装。
-#
-# 在这里启用的好处：
-#   - 最终镜像构建更快，最终 Dockerfile 只需要 COPY 工具层文件
-#   - 多个最终镜像可以复用同一份 tools 缓存
-# 在这里启用的坏处：
-#   - tools 镜像需要更频繁更新（Docker CLI 更新会推动 tools 重建）
-#   - 需要保证 tools 的发行版与最终镜像兼容，否则可能出现依赖不匹配
-#
-# 启用方式：
-#   1) 取消下面 RUN 块的注释
-#   2) 在最终 Dockerfile 里启用“方式 A”的 COPY，并保持“方式 B”的安装块为注释状态
-ARG OPENCLAW_DOCKER_GPG_FINGERPRINT="9DC858229FC7DD38854AE2D88D81803C0EBFCD88"
-
-# RUN apt-get update \
-#  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl gnupg \
-#  && install -m 0755 -d /etc/apt/keyrings \
-#  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /tmp/docker.gpg.asc \
-#  && expected_fingerprint="$(printf '%s' "$OPENCLAW_DOCKER_GPG_FINGERPRINT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')" \
-#  && actual_fingerprint="$(gpg --batch --show-keys --with-colons /tmp/docker.gpg.asc | awk -F: '$1 == "fpr" { print toupper($10); exit }')" \
-#  && if [ -z "$actual_fingerprint" ] || [ "$actual_fingerprint" != "$expected_fingerprint" ]; then \
-#       echo "ERROR: Docker apt key fingerprint mismatch (expected $expected_fingerprint, got ${actual_fingerprint:-})" >&2; \
-#       exit 1; \
-#     fi \
-#  && gpg --dearmor -o /etc/apt/keyrings/docker.gpg /tmp/docker.gpg.asc \
-#  && rm -f /tmp/docker.gpg.asc \
-#  && chmod a+r /etc/apt/keyrings/docker.gpg \
-#  && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bookworm stable\n' \
-#       "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list \
-#  && apt-get update \
-#  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
-#  && apt-get clean \
-#  && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*

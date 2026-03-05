@@ -44,6 +44,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Get date tag
+        id: date
+        run: echo "tag=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
       - name: Build and push tools image
         id: build
         uses: docker/build-push-action@v6
@@ -53,7 +57,7 @@ jobs:
           push: true
           tags: |
             ${{ env.TOOLS_IMAGE }}:latest
-            ${{ env.TOOLS_IMAGE }}:${{ github.run_number }}
+            ${{ env.TOOLS_IMAGE }}:${{ steps.date.outputs.tag }}
           cache-from: type=registry,ref=${{ env.TOOLS_IMAGE }}:cache
           cache-to: type=registry,ref=${{ env.TOOLS_IMAGE }}:cache,mode=max
 
@@ -78,6 +82,10 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Get date tag
+        id: date
+        run: echo "tag=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+
       - name: Determine install_browser value
         id: args
         run: |
@@ -95,7 +103,7 @@ jobs:
           push: true
           tags: |
             ${{ env.FINAL_IMAGE }}:latest
-            ${{ env.FINAL_IMAGE }}:${{ github.run_number }}
+            ${{ env.FINAL_IMAGE }}:${{ steps.date.outputs.tag }}
           build-args: |
             OPENCLAW_INSTALL_BROWSER=${{ steps.args.outputs.install_browser }}
           cache-from: type=registry,ref=${{ env.FINAL_IMAGE }}:cache

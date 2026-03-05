@@ -32,7 +32,7 @@ COPY --from=tools /usr/bin/gh /usr/bin/gh
 # ── Docker CLI ────────────────────────────────────────────────────────────────
 # Installed here rather than in the tools layer, so the tools layer stays stable.
 # DOCKER_CLI_VERSION: pin to a specific release (e.g. 27.3.1); leave unset for latest.
-ARG DOCKER_CLI_VERSION=””
+ARG DOCKER_CLI_VERSION=""
 
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends ca-certificates curl \
@@ -40,11 +40,11 @@ RUN apt-get update \
  && curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc \
  && chmod a+r /etc/apt/keyrings/docker.asc \
  && printf 'deb [arch=%s signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian bookworm stable\n' \
-      “$(dpkg --print-architecture)” > /etc/apt/sources.list.d/docker.list \
+      "$(dpkg --print-architecture)" > /etc/apt/sources.list.d/docker.list \
  && apt-get update \
- && if [ -n “$DOCKER_CLI_VERSION” ]; then \
-      CLI_VER=$(apt-cache madison docker-ce-cli | awk -v v=”$DOCKER_CLI_VERSION” '$0 ~ v {print $3; exit}'); \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends “docker-ce-cli=${CLI_VER}” docker-compose-plugin; \
+ && if [ -n "$DOCKER_CLI_VERSION" ]; then \
+      CLI_VER=$(apt-cache madison docker-ce-cli | awk -v v="$DOCKER_CLI_VERSION" '$0 ~ v {print $3; exit}'); \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "docker-ce-cli=${CLI_VER}" docker-compose-plugin; \
     else \
       DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin; \
     fi \

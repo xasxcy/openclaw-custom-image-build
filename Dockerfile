@@ -148,7 +148,7 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
 
 # ── 补装官方镜像缺失的扩展依赖（待上游修复后移除）────────────────────────────
 # https://github.com/openclaw/openclaw/issues/23611
-RUN cd /app && npm install @larksuiteoapi/node-sdk && \
+RUN cd /app && npm install --no-package-lock @larksuiteoapi/node-sdk && \
     ls node_modules/@larksuiteoapi/node-sdk/package.json
 
 # ── npm 全局目录权限 ──────────────────────────────────────────────────────────

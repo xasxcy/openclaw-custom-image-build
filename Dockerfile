@@ -146,6 +146,10 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
       rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     fi
 
+# ── 补装官方镜像缺失的扩展依赖（待上游修复后移除）────────────────────────────
+# https://github.com/openclaw/openclaw/issues/23611
+RUN cd /app && npm install --save @larksuiteoapi/node-sdk 2>/dev/null || true
+
 # ── npm 全局目录权限 ──────────────────────────────────────────────────────────
 RUN chown -R node:node /usr/local/lib/node_modules 2>/dev/null || true
 

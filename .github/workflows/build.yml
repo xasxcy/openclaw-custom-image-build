@@ -20,6 +20,8 @@ env:
   REGISTRY: ghcr.io
   TOOLS_IMAGE: ghcr.io/xasxcy/openclaw-tools
   FINAL_IMAGE: ghcr.io/xasxcy/openclaw
+  # Opt in to Node.js 24 runner before GitHub's forced migration on 2026-06-02
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-tools:

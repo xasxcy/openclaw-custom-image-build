@@ -3,9 +3,6 @@ services:
     image: ghcr.io/xasxcy/openclaw:latest # openclaw:local
     container_name: openclaw-gateway
 
-    env_file:
-      - path: .env_for_container
-        required: false
     environment:
       TZ: Asia/Shanghai
       # v2026.3.13-1: 官方新增 OPENCLAW_TZ，用于容器内时区固定

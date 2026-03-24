@@ -14,7 +14,9 @@ RUN groupadd --gid 1000 node && \
     useradd --uid 1000 --gid node --shell /bin/bash --create-home node
 
 # ── 系统依赖 ──────────────────────────────────────────────────────────────────
+# apt-get upgrade：跟进 v2026.3.13-1 官方做法，确保基础镜像安全补丁被应用
 RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get upgrade -y && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       apt-utils \
       socat \

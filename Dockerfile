@@ -23,11 +23,15 @@ ENV PATH="/usr/local/go/bin:${PATH}"
 ENV GOPATH="/home/node/go"
 RUN mkdir -p /home/node/go && chown -R node:node /home/node/go
 
-# uv
+# uv / uvx
 COPY --from=tools /usr/local/bin/uv /usr/local/bin/uv
+COPY --from=tools /usr/local/bin/uvx /usr/local/bin/uvx
 
 # gh
 COPY --from=tools /usr/bin/gh /usr/bin/gh
+
+# cloudflared
+COPY --from=tools /usr/bin/cloudflared /usr/bin/cloudflared
 
 # ── Docker CLI ────────────────────────────────────────────────────────────────
 # Installed here rather than in the tools layer, so the tools layer stays stable.
@@ -129,22 +133,25 @@ RUN ln -sf /bin/bash /bin/sh
 # ── Chromium --no-sandbox 环境变量 ───────────────────────────────────────────
 ENV CHROMIUM_FLAGS="--no-sandbox --disable-setuid-sandbox"
 ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_FLAGS="--no-sandbox --disable-setuid-sandbox"
-# 持久写入 PLAYWRIGHT_BROWSERS_PATH，使运行时 OpenClaw 能直接定位浏览器，
-# 无需在容器启动脚本里额外 export。路径与 Playwright 自身默认值（~/.cache/ms-playwright）对齐。
-ENV PLAYWRIGHT_BROWSERS_PATH="/home/node/.cache/ms-playwright"
+# 写入系统级路径（非用户缓存目录），安装后在 /usr/bin 建 symlink 覆盖常见默认路径。
+ENV PLAYWRIGHT_BROWSERS_PATH="/usr/local/ms-playwright"
 
-# ── Chromium 可选安装（需 build arg）────────────────────────────────────────
-# docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 ...
-ARG OPENCLAW_INSTALL_BROWSER=""
-RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
-      apt-get update && \
-      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
-      mkdir -p /home/node/.cache/ms-playwright && \
-      node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
-      chown -R node:node /home/node/.cache/ms-playwright && \
-      apt-get clean && \
-      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
-    fi
+# ── Python 工具包 ──────────────────────────────────────────────────────────────
+RUN uv pip install --system browser-use profile-use
+
+# ── Playwright + Chromium（总是安装）─────────────────────────────────────────
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
+    mkdir -p /usr/local/ms-playwright && \
+    node /app/node_modules/playwright-core/cli.js install --with-deps chromium && \
+    browser-use install && \
+    CHROME_BIN=$(find /usr/local/ms-playwright -name chrome -type f 2>/dev/null | head -1) && \
+    ln -sf "$CHROME_BIN" /usr/bin/chromium && \
+    ln -sf "$CHROME_BIN" /usr/bin/chromium-browser && \
+    ln -sf "$CHROME_BIN" /usr/bin/google-chrome-stable && \
+    chown -R node:node /usr/local/ms-playwright && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
 # ── 补装官方镜像缺失的扩展依赖（待上游修复后移除）────────────────────────────
 # https://github.com/openclaw/openclaw/issues/23611

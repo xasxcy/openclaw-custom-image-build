@@ -71,6 +71,14 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     apt-get update && apt-get install -y --no-install-recommends gh && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
+# ── cloudflared ───────────────────────────────────────────────────────────────
+RUN curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg -o /usr/share/keyrings/cloudflare-main.gpg && \
+    printf 'deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared bookworm main\n' \
+      > /etc/apt/sources.list.d/cloudflared.list && \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cloudflared && \
+    apt-get clean && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
+
 # ── Homebrew ──────────────────────────────────────────────────────────────────
 # 路径必须是 /home/linuxbrew/.linuxbrew（OpenClaw brew.ts 写死查找此路径）
 # brew 不允许 root 运行，以 node 用户安装

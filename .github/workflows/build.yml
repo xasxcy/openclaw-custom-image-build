@@ -10,11 +10,6 @@ on:
       - 'Dockerfile.tools'
       - '.github/workflows/build.yml'
   workflow_dispatch:
-    inputs:
-      install_browser:
-        description: 'Install Chromium (true/false)'
-        type: boolean
-        default: true
 
 env:
   REGISTRY: ghcr.io
@@ -88,15 +83,6 @@ jobs:
         id: date
         run: echo "tag=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
 
-      - name: Determine install_browser value
-        id: args
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "install_browser=${{ inputs.install_browser && '1' || '' }}" >> $GITHUB_OUTPUT
-          else
-            echo "install_browser=1" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build and push final image
         uses: docker/build-push-action@v6
         with:
@@ -107,7 +93,5 @@ jobs:
           tags: |
             ${{ env.FINAL_IMAGE }}:latest
             ${{ env.FINAL_IMAGE }}:${{ steps.date.outputs.tag }}
-          build-args: |
-            OPENCLAW_INSTALL_BROWSER=${{ steps.args.outputs.install_browser }}
           cache-from: type=registry,ref=${{ env.FINAL_IMAGE }}:cache
           cache-to: type=registry,ref=${{ env.FINAL_IMAGE }}:cache,mode=max

@@ -8,17 +8,20 @@ Two container images are automatically built and pushed to GitHub Container Regi
 
 | Image | Description |
 |-------|-------------|
-| `ghcr.io/xasxcy/openclaw-tools:latest` | Tool layer: Go, uv, gh, Homebrew, Docker CLI |
-| `ghcr.io/xasxcy/openclaw:latest` | Final image: official OpenClaw + all tools above + Chromium |
+| `ghcr.io/xasxcy/openclaw-tools:latest` | Tool layer: Go, uv/uvx, gh, cloudflared, Homebrew |
+| `ghcr.io/xasxcy/openclaw:latest` | Final image: official OpenClaw + all tools + Docker CLI + Chromium + browser-use |
 
 ## Tools included
 
 - **Go** 1.24+ — avoids toolchain auto-download issues in skills
-- **uv** — fast Python package manager
+- **uv / uvx** — fast Python package manager and tool runner
 - **gh** — GitHub CLI
+- **cloudflared** — Cloudflare Tunnel CLI
 - **Homebrew** — installed at `/home/linuxbrew/.linuxbrew` (matches OpenClaw's expected path)
 - **Docker CLI + Compose plugin** — for Docker-in-Docker workflows
-- **Chromium** — via Playwright, for browser automation skills
+- **python3 + pip** — system Python with pip available for interactive use
+- **browser-use** — Python library for AI browser automation (installed via uv)
+- **Chromium** — via Playwright, installed to `/usr/local/ms-playwright`; symlinked to `/usr/bin/chromium`, `/usr/bin/chromium-browser`, `/usr/bin/google-chrome-stable`
 
 ## How to use the built image
 
@@ -48,22 +51,19 @@ Both jobs run every day. The tools layer hits the registry cache (fast) since `D
 
 | File changed | What happens |
 |---|---|
-| `Dockerfile.tools` | Both jobs run; tools layer cache is invalidated → **full rebuild** (~15–20 min); final image rebuilds too |
+| `Dockerfile.tools` | Both jobs run; tools layer cache is invalidated → **full rebuild**; final image rebuilds too |
 | `Dockerfile` | Both jobs run; tools layer cache hits (fast); **final image rebuilds** |
 | `.github/workflows/build.yml` | Both jobs run (full rebuild) |
 
-**Manual** — via the "Run workflow" button in the Actions tab. Chromium installation can be toggled (default: on).
+**Manual** — via the "Run workflow" button in the Actions tab.
 
-### Chromium in automated builds
+### Chromium
 
-Chromium is always installed during scheduled and push-triggered builds. This is controlled by two cooperating parts:
-
-1. **`.github/workflows/build.yml`** — the `Determine install_browser value` step forces `OPENCLAW_INSTALL_BROWSER=1` for any non-manual trigger.
-2. **`Dockerfile` lines 185–194** — the `ARG OPENCLAW_INSTALL_BROWSER` + `RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]` block performs the actual Playwright Chromium install when the variable is set.
+Chromium is **always installed** unconditionally. Playwright downloads it to `/usr/local/ms-playwright` (a stable system path, not a user cache directory), and the build creates symlinks at standard system paths so tools that look for `google-chrome-stable`, `chromium`, or `chromium-browser` will find it.
 
 ### Image tags
 
-Each build produces two tags per image: `latest` (always updated) and the GitHub Actions run number (immutable, for rollback).
+Each build produces two tags per image: `latest` (always updated) and a date tag (e.g. `:20260416`, immutable, for rollback).
 
 ## Build locally
 
@@ -73,20 +73,19 @@ docker build -f Dockerfile.tools -t openclaw-tools:latest .
 
 # Step 2: build the final image
 docker build -t openclaw:local .
-
-# With Chromium support
-docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 -t openclaw:local .
 ```
 
 ## Architecture
 
 ```
 Dockerfile.tools  (base: debian:bookworm-slim)
-    └── installs: Go, uv, gh, Homebrew, optional Docker CLI
+    └── installs: Go, uv/uvx, gh, cloudflared, Homebrew
 
 Dockerfile  (base: ghcr.io/openclaw/openclaw:latest)
     ├── COPY tools from openclaw-tools layer
-    ├── installs: Docker CLI, system deps, optional Chromium
+    ├── installs: Docker CLI, system deps (incl. python3-pip), browser-use
+    ├── installs: Playwright Chromium → /usr/local/ms-playwright
+    ├── symlinks: /usr/bin/chromium, chromium-browser, google-chrome-stable
     └── final image: openclaw:local / ghcr.io/xasxcy/openclaw:latest
 ```
 

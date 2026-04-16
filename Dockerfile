@@ -137,7 +137,7 @@ ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_FLAGS="--no-sandbox --disable-setuid-sandbox"
 ENV PLAYWRIGHT_BROWSERS_PATH="/usr/local/ms-playwright"
 
 # ── Python 工具包 ──────────────────────────────────────────────────────────────
-RUN uv pip install --system browser-use profile-use
+RUN uv pip install --system --break-system-packages browser-use profile-use
 
 # ── Playwright + Chromium（总是安装）─────────────────────────────────────────
 RUN apt-get update && \

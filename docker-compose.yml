@@ -6,13 +6,28 @@ services:
     env_file:
       - .env_for_container
     environment:
-      TZ: Asia/Shanghai
+      TZ: ${OPENCLAW_TZ:-Asia/Shanghai}
       # v2026.3.13-1: 官方新增 OPENCLAW_TZ，用于容器内时区固定
-      OPENCLAW_TZ: Asia/Shanghai
+      OPENCLAW_TZ: ${OPENCLAW_TZ:-Asia/Shanghai}
       HOME: /home/node
       TERM: xterm-256color
       # 生成一个安全的 Token 用于连接
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+      OPENCLAW_DISABLE_BONJOUR: ${OPENCLAW_DISABLE_BONJOUR:-}
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+
+      # OpenTelemetry export is outbound OTLP/HTTP from the Gateway.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_METRICS_ENDPOINT: ${OTEL_EXPORTER_OTLP_METRICS_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: ${OTEL_EXPORTER_OTLP_LOGS_ENDPOINT:-}
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+      OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-}
+      OTEL_SEMCONV_STABILITY_OPT_IN: ${OTEL_SEMCONV_STABILITY_OPT_IN:-}
+      OPENCLAW_OTEL_PRELOADED: ${OPENCLAW_OTEL_PRELOADED:-}
 
       # Persist Playwright browser downloads
       PLAYWRIGHT_BROWSERS_PATH: /home/node/.cache/ms-playwright
@@ -52,9 +67,14 @@ services:
       # Keep standard bind mounts
       - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
       - ${OPENCLAW_WORKSPACE_DIR}:/home/node/.openclaw/workspace
+      # 新增 sub-agent workspace
+      - ${OPENCLAW_WORKSPACE_DIR_MIKA}:/home/node/.openclaw/workspace-mika
 
       # Vertex
       - ${OPENCLAW_CONFIG_DIR}/application_default_credentials.json:/home/node/.config/gcloud/application_default_credentials.json:ro
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     ports:
       # ⚠️ 允许局域网访问 Dashboard (18789)
@@ -78,10 +98,17 @@ services:
 
     healthcheck:
       # v2026.3.7+: 官方暴露 /healthz HTTP 端点，比 CLI 更轻量
-      test: ["CMD", "curl", "-f", "http://localhost:18789/healthz"]
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 5
+      start_period: 20s
 
   # CLI 工具，用于配对和调试
   openclaw-cli:
@@ -89,13 +116,23 @@ services:
     container_name: openclaw-cli
     # ⚠️ 关键：使用 service 模式共享 Gateway 网络，避免连不上; 同时拒绝其他容器的连接
     network_mode: "service:openclaw-gateway"
+    cap_drop:
+      - NET_RAW
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
 
     environment:
       HOME: /home/node
       TERM: xterm-256color
       OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
       # OPENCLAW_GATEWAY_URL: ws://openclaw-gateway:18789
       BROWSER: echo
+      CLAUDE_AI_SESSION_KEY: ${CLAUDE_AI_SESSION_KEY:-}
+      CLAUDE_WEB_SESSION_KEY: ${CLAUDE_WEB_SESSION_KEY:-}
+      CLAUDE_WEB_COOKIE: ${CLAUDE_WEB_COOKIE:-}
+      TZ: ${OPENCLAW_TZ:-Asia/Shanghai}
 
       # Persist Playwright browser downloads
       PLAYWRIGHT_BROWSERS_PATH: /home/node/.cache/ms-playwright
@@ -119,6 +156,8 @@ services:
     init: true
 
     entrypoint: ["node", "dist/index.js"]
+    depends_on:
+      - openclaw-gateway
 
 volumes:
   openclaw_home:

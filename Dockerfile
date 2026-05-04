@@ -154,14 +154,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 
-# ── 补装官方镜像缺失的扩展依赖（待上游修复后移除）────────────────────────────
-# https://github.com/openclaw/openclaw/issues/23611
-RUN cd /tmp && npm init -y && npm install @larksuiteoapi/node-sdk && \
-    rm -rf /app/node_modules/@larksuiteoapi && \
-    cp -r node_modules/@larksuiteoapi /app/node_modules/ && \
-    ls /app/node_modules/@larksuiteoapi/node-sdk/package.json && \
-    rm -rf /tmp/package.json /tmp/node_modules /tmp/package-lock.json
-
 # ── npm 全局目录权限 ──────────────────────────────────────────────────────────
 RUN chown -R node:node /usr/local/lib/node_modules 2>/dev/null || true
 
